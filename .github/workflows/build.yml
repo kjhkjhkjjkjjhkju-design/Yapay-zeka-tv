@@ -127,22 +127,24 @@ jobs:
               SpeechRecognizer sr;
               AlertDialog listen;
               int cur = 0;
-              boolean cm = false, autoMode = false;
+              boolean cm = false, autoMode = false, gStarted = false;
               float cx, cy;
 
               int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
 
-              GradientDrawable bg(int c) {
+              GradientDrawable bg(int c, int rad) {
                   GradientDrawable g = new GradientDrawable();
+                  g.setShape(GradientDrawable.RECTANGLE);
                   g.setColor(c);
-                  g.setCornerRadius(dp(16));
+                  float r = dp(rad);
+                  g.setCornerRadii(new float[]{r, r, r, r, r, r, r, r});
                   return g;
               }
 
-              void deco(View b, final Runnable r) {
+              void deco(View b, final Runnable r, int rad) {
                   b.setFocusable(true);
                   b.setClickable(true);
-                  final GradientDrawable n = bg(0xFF2A2A30), f = bg(0xFF3B82F6);
+                  final GradientDrawable n = bg(0xFF2A2A30, rad), f = bg(0xFF3B82F6, rad);
                   b.setBackground(n);
                   b.setOnFocusChangeListener((v, h) -> v.setBackground(h ? f : n));
                   b.setOnClickListener(v -> r.run());
@@ -154,7 +156,7 @@ jobs:
                   b.setTextSize(sp);
                   b.setTextColor(Color.WHITE);
                   b.setGravity(Gravity.CENTER);
-                  deco(b, r);
+                  deco(b, r, 28);
                   return b;
               }
 
@@ -163,7 +165,7 @@ jobs:
                   b.setImageResource(res);
                   int p = dp(14);
                   b.setPadding(p, p, p, p);
-                  deco(b, r);
+                  deco(b, r, 16);
                   return b;
               }
 
@@ -247,6 +249,7 @@ jobs:
 
               void open(int k) {
                   cur = k;
+                  gStarted = false;
                   cm = false;
                   cursor.setVisibility(View.GONE);
                   home.setVisibility(View.GONE);
@@ -319,7 +322,7 @@ jobs:
               }
 
               void move(int k, int rc) {
-                  int st = dp(10) + Math.min(rc, 15) * dp(2);
+                  int st = dp(13) + Math.min(rc, 15) * dp(3);
                   int w = webBox.getWidth(), h = webBox.getHeight();
                   if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
                       if (cx <= 0) { if (rc == 0) exitCursor(); return; }
@@ -423,19 +426,20 @@ jobs:
               void send(String t) {
                   t = t.trim();
                   if (t.isEmpty()) return;
-                  if (cur == 0) {
+                  if (cur == 0 && !gStarted) {
+                      gStarted = true;
                       web.loadUrl(U[0] + "&q=" + Uri.encode(t));
                       return;
                   }
                   web.evaluateJavascript("(function(t){"
-                      + "var e=document.querySelector('textarea')||document.querySelector('[contenteditable=\"true\"]')||document.querySelector('input[type=text],input[type=search]');"
-                      + "if(!e)return;e.focus();"
+                      + "var c=[].slice.call(document.querySelectorAll('textarea,[contenteditable=\"true\"],input[type=text],input[type=search]')).filter(function(x){return x.getClientRects().length>0&&x.getBoundingClientRect().width>50;});"
+                      + "var e=c[c.length-1];if(!e)return;e.focus();"
                       + "if(e.isContentEditable){document.execCommand('selectAll');document.execCommand('insertText',false,t);}"
                       + "else{Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value').set.call(e,t);e.dispatchEvent(new Event('input',{bubbles:true}));}"
-                      + "setTimeout(function(){var f=e.closest('form');"
-                      + "var b=(f&&f.querySelector('button[type=submit]'))||document.querySelector('button[aria-label*=Send],button[aria-label*=Gönder],button[aria-label*=Submit]');"
-                      + "if(b)b.click();else e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));},400);"
-                      + "})(" + JSONObject.quote(t) + ")", null);
+                      + "setTimeout(function(){var b=null,p=e;"
+                      + "for(var i=0;i<7&&p&&!b;i++){p=p.parentElement;if(p)b=p.querySelector('button[type=submit],[aria-label*=\"Send\" i],[aria-label*=\"Submit\" i],[aria-label*=\"Gönder\" i]');}"
+                      + "if(b)b.click();else{['keydown','keypress','keyup'].forEach(function(n){e.dispatchEvent(new KeyboardEvent(n,{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));});}"
+                      + "},400);})(" + JSONObject.quote(t) + ")", null);
               }
           }
           EOF_6
