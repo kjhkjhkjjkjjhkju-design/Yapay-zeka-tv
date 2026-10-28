@@ -96,10 +96,13 @@ jobs:
           import android.net.Uri;
           import android.os.Build;
           import android.os.Bundle;
+          import android.os.SystemClock;
           import android.speech.RecognitionListener;
           import android.speech.RecognizerIntent;
           import android.speech.SpeechRecognizer;
           import android.view.Gravity;
+          import android.view.KeyEvent;
+          import android.view.MotionEvent;
           import android.view.View;
           import android.webkit.CookieManager;
           import android.webkit.WebSettings;
@@ -107,6 +110,7 @@ jobs:
           import android.webkit.WebViewClient;
           import android.widget.EditText;
           import android.widget.FrameLayout;
+          import android.widget.ImageView;
           import android.widget.LinearLayout;
           import android.widget.TextView;
           import android.widget.Toast;
@@ -117,10 +121,14 @@ jobs:
               static final String[] U = {"https://www.google.com/search?udm=50", "https://duck.ai/"};
               static final String[] N = {"Google AI Modu", "Duck.ai"};
               WebView web;
-              LinearLayout home, app;
+              FrameLayout home, webBox;
+              LinearLayout app, bar;
+              View cursor;
               SpeechRecognizer sr;
               AlertDialog listen;
               int cur = 0;
+              boolean cm = false, autoMode = false;
+              float cx, cy;
 
               int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
 
@@ -131,18 +139,31 @@ jobs:
                   return g;
               }
 
-              TextView btn(String t, int sp, final Runnable r) {
-                  TextView b = new TextView(this);
-                  b.setText(t);
-                  b.setTextSize(sp);
-                  b.setTextColor(Color.WHITE);
-                  b.setGravity(Gravity.CENTER);
+              void deco(View b, final Runnable r) {
                   b.setFocusable(true);
                   b.setClickable(true);
                   final GradientDrawable n = bg(0xFF2A2A30), f = bg(0xFF3B82F6);
                   b.setBackground(n);
                   b.setOnFocusChangeListener((v, h) -> v.setBackground(h ? f : n));
                   b.setOnClickListener(v -> r.run());
+              }
+
+              TextView btn(String t, int sp, Runnable r) {
+                  TextView b = new TextView(this);
+                  b.setText(t);
+                  b.setTextSize(sp);
+                  b.setTextColor(Color.WHITE);
+                  b.setGravity(Gravity.CENTER);
+                  deco(b, r);
+                  return b;
+              }
+
+              ImageView ibtn(int res, Runnable r) {
+                  ImageView b = new ImageView(this);
+                  b.setImageResource(res);
+                  int p = dp(14);
+                  b.setPadding(p, p, p, p);
+                  deco(b, r);
                   return b;
               }
 
@@ -152,15 +173,16 @@ jobs:
                   FrameLayout root = new FrameLayout(this);
                   root.setBackgroundColor(0xFF111114);
 
-                  home = new LinearLayout(this);
-                  home.setOrientation(LinearLayout.VERTICAL);
-                  home.setGravity(Gravity.CENTER);
+                  home = new FrameLayout(this);
+                  LinearLayout mid = new LinearLayout(this);
+                  mid.setOrientation(LinearLayout.VERTICAL);
+                  mid.setGravity(Gravity.CENTER);
                   TextView t = new TextView(this);
                   t.setText("Lütfen yapay zeka modelinizi seçin");
                   t.setTextColor(Color.WHITE);
                   t.setTextSize(26);
                   t.setGravity(Gravity.CENTER);
-                  home.addView(t);
+                  mid.addView(t);
                   LinearLayout row = new LinearLayout(this);
                   row.setGravity(Gravity.CENTER);
                   for (int i = 0; i < 2; i++) {
@@ -169,48 +191,73 @@ jobs:
                       p.setMargins(dp(16), dp(40), dp(16), 0);
                       row.addView(btn(N[i], 24, () -> open(k)), p);
                   }
-                  home.addView(row);
+                  mid.addView(row);
+                  home.addView(mid, new FrameLayout.LayoutParams(-1, -1));
+                  TextView ft = new TextView(this);
+                  ft.setText("Yapımcı: Veysel Alemdar");
+                  ft.setTextColor(0xFF9A9AA5);
+                  ft.setTextSize(26);
+                  FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+                  fp.bottomMargin = dp(24);
+                  home.addView(ft, fp);
                   root.addView(home, new FrameLayout.LayoutParams(-1, -1));
 
                   app = new LinearLayout(this);
                   app.setVisibility(View.GONE);
-                  LinearLayout bar = new LinearLayout(this);
+                  bar = new LinearLayout(this);
                   bar.setOrientation(LinearLayout.VERTICAL);
                   bar.setGravity(Gravity.CENTER);
                   bar.setBackgroundColor(0xFF1C1C22);
-                  String[] L = {"Ana", "▲", "Mik", "▼"};
-                  Runnable[] A = {() -> showHome(), () -> scroll(-1), () -> mic(), () -> scroll(1)};
-                  for (int i = 0; i < 4; i++) {
-                      LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(76), dp(66));
-                      p.setMargins(0, dp(8), 0, dp(8));
-                      bar.addView(btn(L[i], 18, A[i]), p);
+                  int[] I = {R.drawable.ic_home, R.drawable.ic_up, R.drawable.ic_mic, R.drawable.ic_kb, R.drawable.ic_down};
+                  Runnable[] A = {() -> showHome(), () -> scroll(-1, 0.7f), () -> mic(true), () -> ask(""), () -> scroll(1, 0.7f)};
+                  for (int i = 0; i < 5; i++) {
+                      LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(70), dp(60));
+                      p.setMargins(0, dp(6), 0, dp(6));
+                      bar.addView(ibtn(I[i], A[i]), p);
                   }
-                  app.addView(bar, new LinearLayout.LayoutParams(dp(96), -1));
+                  app.addView(bar, new LinearLayout.LayoutParams(dp(90), -1));
 
                   web = new WebView(this);
                   WebSettings ws = web.getSettings();
                   ws.setJavaScriptEnabled(true);
                   ws.setDomStorageEnabled(true);
                   ws.setUserAgentString(ws.getUserAgentString().replace("; wv", ""));
-                  CookieManager cm = CookieManager.getInstance();
-                  cm.setAcceptCookie(true);
-                  cm.setAcceptThirdPartyCookies(web, true);
+                  CookieManager cm2 = CookieManager.getInstance();
+                  cm2.setAcceptCookie(true);
+                  cm2.setAcceptThirdPartyCookies(web, true);
                   web.setWebViewClient(new WebViewClient());
                   web.setBackgroundColor(Color.BLACK);
-                  app.addView(web, new LinearLayout.LayoutParams(0, -1, 1));
+                  web.setFocusable(false);
+
+                  webBox = new FrameLayout(this);
+                  webBox.setFocusable(true);
+                  webBox.addView(web, new FrameLayout.LayoutParams(-1, -1));
+                  cursor = new View(this);
+                  GradientDrawable g = new GradientDrawable();
+                  g.setShape(GradientDrawable.OVAL);
+                  g.setColor(0xCCFFFFFF);
+                  g.setStroke(dp(3), 0xFF3B82F6);
+                  cursor.setBackground(g);
+                  cursor.setVisibility(View.GONE);
+                  webBox.addView(cursor, new FrameLayout.LayoutParams(dp(24), dp(24)));
+                  app.addView(webBox, new LinearLayout.LayoutParams(0, -1, 1));
                   root.addView(app, new FrameLayout.LayoutParams(-1, -1));
                   setContentView(root);
               }
 
               void open(int k) {
                   cur = k;
+                  cm = false;
+                  cursor.setVisibility(View.GONE);
                   home.setVisibility(View.GONE);
                   app.setVisibility(View.VISIBLE);
                   web.loadUrl(U[k]);
-                  web.requestFocus();
+                  bar.getChildAt(2).requestFocus();
               }
 
               void showHome() {
+                  cm = false;
+                  cursor.setVisibility(View.GONE);
                   app.setVisibility(View.GONE);
                   home.setVisibility(View.VISIBLE);
                   home.requestFocus();
@@ -223,16 +270,97 @@ jobs:
                   } else super.onBackPressed();
               }
 
-              void scroll(int d) {
+              @Override
+              public boolean dispatchKeyEvent(KeyEvent e) {
+                  if (app.getVisibility() == View.VISIBLE) {
+                      int k = e.getKeyCode();
+                      boolean dir = k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN
+                          || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT;
+                      boolean ok = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER
+                          || k == KeyEvent.KEYCODE_NUMPAD_ENTER;
+                      if (!cm && k == KeyEvent.KEYCODE_DPAD_RIGHT && bar.hasFocus()) {
+                          if (e.getAction() == KeyEvent.ACTION_DOWN) enterCursor();
+                          return true;
+                      }
+                      if (cm) {
+                          if (ok) {
+                              if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) click();
+                              return true;
+                          }
+                          if (dir) {
+                              if (e.getAction() == KeyEvent.ACTION_DOWN) move(k, e.getRepeatCount());
+                              return true;
+                          }
+                      }
+                  }
+                  return super.dispatchKeyEvent(e);
+              }
+
+              void enterCursor() {
+                  cm = true;
+                  if (cx == 0 && cy == 0) {
+                      cx = webBox.getWidth() / 2f;
+                      cy = webBox.getHeight() / 2f;
+                  }
+                  place();
+                  cursor.setVisibility(View.VISIBLE);
+                  webBox.requestFocus();
+              }
+
+              void exitCursor() {
+                  cm = false;
+                  cursor.setVisibility(View.GONE);
+                  bar.getChildAt(2).requestFocus();
+              }
+
+              void place() {
+                  cursor.setX(cx - dp(12));
+                  cursor.setY(cy - dp(12));
+              }
+
+              void move(int k, int rc) {
+                  int st = dp(10) + Math.min(rc, 15) * dp(2);
+                  int w = webBox.getWidth(), h = webBox.getHeight();
+                  if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
+                      if (cx <= 0) { if (rc == 0) exitCursor(); return; }
+                      cx = Math.max(0, cx - st);
+                  } else if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                      cx = Math.min(w, cx + st);
+                  } else if (k == KeyEvent.KEYCODE_DPAD_UP) {
+                      if (cy <= 0) { scroll(-1, 0.3f); return; }
+                      cy = Math.max(0, cy - st);
+                  } else {
+                      if (cy >= h) { scroll(1, 0.3f); return; }
+                      cy = Math.min(h, cy + st);
+                  }
+                  place();
+              }
+
+              void click() {
+                  final float x = cx, y = cy;
+                  long t = SystemClock.uptimeMillis();
+                  MotionEvent d = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0);
+                  web.dispatchTouchEvent(d);
+                  d.recycle();
+                  web.postDelayed(() -> {
+                      long t2 = SystemClock.uptimeMillis();
+                      MotionEvent u = MotionEvent.obtain(t, t2, MotionEvent.ACTION_UP, x, y, 0);
+                      web.dispatchTouchEvent(u);
+                      u.recycle();
+                  }, 70);
+              }
+
+              void scroll(int d, float f) {
                   float dens = getResources().getDisplayMetrics().density;
-                  int px = (int) (web.getHeight() * 0.7f * d / dens);
+                  int px = (int) (web.getHeight() * f * d / dens);
                   web.evaluateJavascript("(function(d){var b=document.scrollingElement,m=0,e=null;"
                       + "document.querySelectorAll('*').forEach(function(x){"
                       + "if(x.scrollHeight>x.clientHeight+20&&x.clientHeight>m&&/(auto|scroll)/.test(getComputedStyle(x).overflowY)){m=x.clientHeight;e=x;}});"
                       + "(e&&m>=innerHeight*0.5?e:b).scrollBy({top:d,behavior:'smooth'});})(" + px + ")", null);
               }
 
-              void mic() {
+              void mic(boolean auto) {
+                  autoMode = auto;
                   if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                       requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 1);
                       return;
@@ -245,22 +373,23 @@ jobs:
                   if (sr == null) {
                       sr = SpeechRecognizer.createSpeechRecognizer(this);
                       sr.setRecognitionListener(new RecognitionListener() {
-                          public void onReadyForSpeech(android.os.Bundle p) {}
+                          public void onReadyForSpeech(Bundle p) {}
                           public void onBeginningOfSpeech() {}
                           public void onRmsChanged(float v) {}
                           public void onBufferReceived(byte[] b) {}
                           public void onEndOfSpeech() {}
-                          public void onPartialResults(android.os.Bundle p) {}
-                          public void onEvent(int t, android.os.Bundle p) {}
+                          public void onPartialResults(Bundle p) {}
+                          public void onEvent(int t, Bundle p) {}
                           public void onError(int e) {
                               closeListen();
                               Toast.makeText(MainActivity.this, "Anlaşılamadı", Toast.LENGTH_SHORT).show();
-                              ask("");
+                              if (!autoMode) ask("");
                           }
-                          public void onResults(android.os.Bundle r) {
+                          public void onResults(Bundle r) {
                               closeListen();
                               ArrayList<String> l = r.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                              ask(l == null || l.isEmpty() ? "" : l.get(0));
+                              String s = (l == null || l.isEmpty()) ? "" : l.get(0);
+                              if (autoMode && !s.trim().isEmpty()) send(s); else ask(s);
                           }
                       });
                   }
@@ -279,7 +408,7 @@ jobs:
 
               @Override
               public void onRequestPermissionsResult(int c, String[] p, int[] g) {
-                  if (g.length > 0 && g[0] == PackageManager.PERMISSION_GRANTED) mic();
+                  if (g.length > 0 && g[0] == PackageManager.PERMISSION_GRANTED) mic(autoMode);
               }
 
               void ask(String t) {
@@ -287,7 +416,7 @@ jobs:
                   e.setText(t);
                   new AlertDialog.Builder(this).setTitle("Sorunuz").setView(e)
                       .setPositiveButton("Gönder", (d, w) -> send(e.getText().toString()))
-                      .setNeutralButton("Tekrar konuş", (d, w) -> mic())
+                      .setNeutralButton("Tekrar konuş", (d, w) -> mic(false))
                       .setNegativeButton("İptal", null).show();
               }
 
@@ -310,6 +439,26 @@ jobs:
               }
           }
           EOF_6
+          mkdir -p "$(dirname app/src/main/res/drawable/ic_home.xml)"
+          cat > app/src/main/res/drawable/ic_home.xml <<'EOF_7'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"/></vector>
+          EOF_7
+          mkdir -p "$(dirname app/src/main/res/drawable/ic_up.xml)"
+          cat > app/src/main/res/drawable/ic_up.xml <<'EOF_8'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M7.41,15.41L12,10.83l4.59,4.58L18,14l-6,-6 -6,6z"/></vector>
+          EOF_8
+          mkdir -p "$(dirname app/src/main/res/drawable/ic_down.xml)"
+          cat > app/src/main/res/drawable/ic_down.xml <<'EOF_9'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M7.41,8.59L12,13.17l4.59,-4.58L18,10l-6,6 -6,-6z"/></vector>
+          EOF_9
+          mkdir -p "$(dirname app/src/main/res/drawable/ic_mic.xml)"
+          cat > app/src/main/res/drawable/ic_mic.xml <<'EOF_10'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M12,14c1.66,0 3,-1.34 3,-3V5c0,-1.66 -1.34,-3 -3,-3S9,3.34 9,5v6c0,1.66 1.34,3 3,3zM17.3,11c0,3 -2.54,5.1 -5.3,5.1S6.7,14 6.7,11H5c0,3.41 2.72,6.23 6,6.72V21h2v-3.28c3.28,-0.48 6,-3.3 6,-6.72h-1.7z"/></vector>
+          EOF_10
+          mkdir -p "$(dirname app/src/main/res/drawable/ic_kb.xml)"
+          cat > app/src/main/res/drawable/ic_kb.xml <<'EOF_11'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFF" android:pathData="M20,5L4,5c-1.1,0 -1.99,0.9 -1.99,2L2,17c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2L22,7c0,-1.1 -0.9,-2 -2,-2zM11,8h2v2h-2L11,8zM11,11h2v2h-2v-2zM8,8h2v2L8,10L8,8zM8,11h2v2L8,13v-2zM7,13L5,13v-2h2v2zM7,10L5,10L5,8h2v2zM8,15h8v2L8,17v-2zM16,13h-2v-2h2v2zM16,10h-2L14,8h2v2zM19,13h-2v-2h2v2zM19,10h-2L17,8h2v2z"/></vector>
+          EOF_11
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
